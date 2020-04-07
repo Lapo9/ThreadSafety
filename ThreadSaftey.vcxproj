@@ -149,10 +149,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="ThreadSafe.h" />
+    <ClInclude Include="src\ThreadSafe.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="MainTEST.cpp" />
+    <ClCompile Include="src\MainTEST.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
