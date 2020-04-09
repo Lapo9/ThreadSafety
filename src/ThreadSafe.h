@@ -2,6 +2,7 @@
 #define THREAD_SAFE_OBJECT
 
 #include <mutex>
+#include <iostream> //DEBUG
 
 namespace thread_safe {
 
@@ -19,8 +20,16 @@ namespace thread_safe {
 
 			//returns the object wrapped in ThreadSafe (pointer because -> needs a pointer as return type)
 			WrappedType* operator->() {
+				std::cout << "Temp ->\n"; //DEBUG
 				return &real.wrappedObj;
 			}
+
+			//convert the temp type to the object it holds
+			operator WrappedType&() {
+				std::cout << "Temp impl cast\n"; //DEBUG
+				return real.wrappedObj;
+			}
+
 		};
 
 		WrappedType wrappedObj;
@@ -29,13 +38,36 @@ namespace thread_safe {
 
 		public:
 
-		//constructs the wrapped object of type WrappedType
+		//constructs the wrapped object of type WrappedType using perfect forwarding
 		template<typename ...ArgsType>
-		ThreadSafe(ArgsType... args) : wrappedObj(args...) {}
+		ThreadSafe(ArgsType&&... args) : wrappedObj(std::forward<ArgsType>(args)...) {}
 
-		//returns a temporary object which locks the mutex on its creation
+		//returns a temporary object which holds a reference to this object and locks the mutex on its creation. The temporary object has a -> which returns a reference to the wrapped object
 		Temp operator->() {
+			std::cout << "ThreadSafe ->\n"; //DEBUG
 			return Temp(*this);
+		}
+
+		//returns a temporary object which holds a reference to this object and locks the mutex on its creation. The temporary object has a cast operator which returns a reference to the wrapped object
+		Temp operator*() {
+			std::cout << "ThreadSafe *\n"; //DEBUG
+			return Temp(*this);
+		}
+
+
+		//TODO these 2 functions do the same thing, I have to choose one.
+		//the first one is more "elegant", the operator has to be before the object, but it needs to be between () (because it has less precedence than .)
+		//the second one needs no (), but it is more confusing
+
+		//returns the wrapped object without locking the mutex
+		WrappedType& operator~() {
+			std::cout << "ThreadSafe ~\n"; //DEBUG
+			return wrappedObj;
+		}
+
+		WrappedType& operator--(int) {
+			std::cout << "ThreadSafe --\n"; //DEBUG
+			return wrappedObj;
 		}
 
 	};
