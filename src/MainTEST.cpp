@@ -11,14 +11,15 @@ void scratch() {
     thread_safe::ThreadSafe<std::string> safe4{"safe4"};
     thread_safe::ThreadSafe<std::string> safe5{"safe5"};
 
-    //safe2->*appendAndLenght(~safe2, 14.9);
-    //safe2->*std::function([](int x, float y)->void {});
-    //safe2->*std::function(appendAndLenght);
+    //safe2->* appendAndLenght(~safe2, 14.9); //ideal form, but how can I achieve this?
+    //safe2->* appendAndLenght, ~safe2, 14.9; //ok, achievable form (the only problem is that the ->* can have only one argument)
+    //safe2->*std::function([](int x, float y)->void {}); //" " "
+    //safe2->*std::function(appendAndLenght); /" " " 
 
-    (safe2, safe3, safe4, safe5).printTEST();
+    int a = (safe2, safe3, safe4, safe5).printTEST();
 
-    safe2->append(" free");
-    std::cout << std::string(*safe2);
+    safe2->append(" free ");
+    std::cout << std::string(*safe2) << a;
 
 }
 
