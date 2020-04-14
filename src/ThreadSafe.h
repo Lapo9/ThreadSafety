@@ -33,9 +33,9 @@ namespace thread_safe {
 		}
 
 		//the function to be called after the lockdown of the mutexes
-		template<typename Return, typename ...Args>
-		void operator->*(std::function<Return(Args...)> callable) {
-			//TODO everything
+		template<typename Return>
+		Return operator->*(std::function<Return()> callable) {
+			return callable();
 		}
 
 		//DEBUG to remove
@@ -126,10 +126,10 @@ namespace thread_safe {
 
 
 		//the function to be called after the lockdown of the mutex
-		template<typename Return, typename ...Args>
-		void operator->*(std::function<Return(Args...)> callable) {
+		template<typename Return>
+		Return operator->*(std::function<Return()> callable) {
 			std::lock_guard<std::mutex>(mtx);
-			//TODO everything
+			return callable();
 		}		
 
 
