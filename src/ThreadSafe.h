@@ -6,50 +6,56 @@
 #include <vector>
 #include <iostream> //DEBUG
 
-//C++20 templates needs to be restricted by concepts
+//C++20 templates needs to be restricted by concepts (they are available in MSVS2019 preview 16.6 v3)
 namespace thread_safe {
 
-	//TODO these are forward declarations. Maybe it is better to split the two classes in two different files
-	class Locks;
-	template <typename WrappedType>
-	class ThreadSafe;
+	template<typename WrappedType>
+	class ThreadSafe; //forward declaration
 
-	//a shorter name for the class (not necessary)
-	template <typename WrappedType>
-	using ts = ThreadSafe<WrappedType>;
+	//C++20 this class should not be visible from outside, but it cannot be a nested class of ThreadSafe (because it is a template class), so maybe it can be NOT exported(?)
+	//TODO there is the big problem that this mechanism is not deadlock safe. Example: 2 different threads run at the same time (ts1, ts2, ts3)->*... and (ts3, ts2, ts1)->*... The first thread locks ts1, the second thread locks ts3, the first locks ts2, the second tries to lock ts2 (but cannot), the first triest to lock ts3 (but cannot). A way to solve this is to make a thread release all of the mutex acquired in the comma separated list as soon as it fails to lock a mutex (and retry immediately), but there is the risk that the same situation goes on forever! Maybe it is possible to implement an algorithm similiar to the CSMACA (for wifi) but it would be slow (I think).
+	//This object contains an array of unique_locks. It is instantiated temporarily, so that all of the ThreadSafe objects in a comma separated list are locked for the duration of the statement.
+	class LocksList {
+		template<typename WrappedType> friend class ThreadSafe; //ThreadSafe must be the only class able to create and interact with a LocksList object.
+		using unique_lock = std::unique_lock<std::mutex>;
+		std::vector<unique_lock> lockGuards; //The list of the locked mutexes (throughout unique_lock) guarded by this object.
 
-	//this object contains an array of unique_locks. It is instantiated temporarily, so that all of the ThreadSafe objects in a comma separated list are locked for the duration of the statement.
-//TODO there is the big problem that this mechanism is not deadlock safe. Example: 2 different threads run at the same time (ts1, ts2, ts3)->*... and (ts3, ts2, ts1)->*... The first thread locks ts1, the second thread locks ts3, the first locks ts2, the second tries to lock ts2 (but cannot), the first triest to lock ts3 (but cannot). A way to solve this is to make a thread release all of the mutex acquired in the comma separated list as soon as it fails to lock a mutex (and retry immediately), but there is the risk that the same situation goes on forever! Maybe it is possible to implement an algorithm similiar to the CSMACA (for wifi) but it would be slow (I think).
-	class Locks {
-		std::vector<std::unique_lock<std::mutex>> lockGuards;
-
-	public:
-		//Constructs a Locks of 2 unique_lock(s)
-		Locks(std::unique_lock<std::mutex>&& lg1, std::unique_lock<std::mutex>&& lg2) {
-			lockGuards.push_back(std::move(lg1));
-			lockGuards.push_back(std::move(lg2));
+		//Constructs a LocksList object made up of 2 unique_lock(s) guarding the internal mutexes of the ThreadSafe objects passed as arguments.
+		template <typename A, typename B>
+		LocksList(ThreadSafe<A>& ts1, ThreadSafe<B>& ts2) {
+			lockGuards.push_back(unique_lock(ts1.mtx));
+			lockGuards.push_back(unique_lock(ts2.mtx));
 		}
 
-		//add a new unique:lock to the array
-		void add(std::unique_lock<std::mutex>&& lg) {
-			lockGuards.push_back(std::move(lg));
+		//Adds a new unique_lock, guarding the internal mutex of the ThreadSafe object passed as argument, to the list
+		template <typename A>
+		void add(ThreadSafe<A>& ts) {
+			lockGuards.push_back(unique_lock(ts.mtx));
 		}
 
-		//the function to be called after the lockdown of the mutexes
+
+		/**
+		 * @brief The `->*` operator is used to chain a function call after a LocksList list.
+		 * @details The callable must be a function with 0 arguments. Inside such callable, any function can be executed with safe access to the ThreadSafe objects mentioned in the left-hand-side list. 
+		 * If inside the callable, at any point, one of the ThreadSafe objects mentioned in the lhs list is accessed through `->` or `*` operators, or is mentioned in a comma separated list preceded only by ThreadSafe objects (or as first item of such list), a deadlock will occur.
+		 * The first parameter is not used at all, but it is necessary to call this overload only when the operator has a LocksList as lhs.
+		 * @tparam Return The same return type of the callable.
+		 * @param callable The function with 0 arguments to call.
+		 * @return Return
+		**/
 		template<typename Return>
-		Return operator->*(std::function<Return()> callable) {
+		friend Return operator->*(const LocksList&, std::function<Return()> callable) {
+			std::cout << "\x1B[31mLocksList ->*\033[0m\n"; //DEBUG
 			return callable();
 		}
 
-		//DEBUG to remove
-		int printTEST() {
-			std::cout << "\x1B[32mTEST\033[0m";
-			std::cout << "\x1B[32m, lock count: \033[0m " << lockGuards.size() << "\n";
-			return 14;
-		}
+		//Comma operators are declared here because they need to be friend with both LocksList and ThreadSafe. This is because I'd like LocksList objects to expose no methods, since they are just an artifact to group more ThreadSafe objects present in a comma separated list.
+		template <typename A, typename B>
+		friend LocksList operator,(ThreadSafe<A>& ts1, ThreadSafe<B>& ts2);
+
+		template <typename A>
+		friend LocksList operator,(LocksList locks, ThreadSafe<A>& ts);
 	};
-
-
 
 	/**
 	 * @class ThreadSafe
@@ -62,23 +68,23 @@ namespace thread_safe {
 	template <typename WrappedType>
 	class ThreadSafe {
 
-		//the temporary class instantiated each time an object of type ThreadSafe is accessed and destroyed at the end of the access
+		//The temporary class instantiated each time an object of type ThreadSafe is accessed. The object is destroyed at the end of the full expression where it has been accessed.
 		class Temp {
-			ThreadSafe& real; //the reference to the permanent object
+			ThreadSafe& real; //The reference to the permanent object.
 			std::lock_guard<std::mutex> guard {real.mtx};
 
 
 			public:
+			//Constructs a Temp object given a ThreadSafe reference. This is the only way to build a Temp object.
 			Temp(ThreadSafe& real) : real{real} {}
 
-
-			//returns the object wrapped in ThreadSafe (pointer because -> needs a pointer as return type)
+			//Returns the object wrapped in the ThreadSafe object used to build this Temp Object. A pointer is returned because `->` needs a pointer as return type.
 			WrappedType* operator->() {
 				std::cout << "\x1B[31mTemp ->\033[0m\n"; //DEBUG
 				return &real.wrappedObj;
 			}
 
-			//convert the temp type to the object it holds
+			//Converts the Temp object to the WrappedType of the ThreadSafe object used to constructs this Temp object.
 			operator WrappedType&() {
 				std::cout << "\x1B[31mTemp ->\033[0m\n"; //DEBUG
 				return real.wrappedObj;
@@ -86,12 +92,14 @@ namespace thread_safe {
 
 		};
 
-		WrappedType wrappedObj;
-		std::mutex mtx;
+		friend class LocksList; //LocksList objects needs to access some private members of ThreadSafe objects (in particular mtx).
+
+
+		WrappedType wrappedObj; //Object to wrap into this ThreadSafe object
+		std::mutex mtx; //Internal mutex associated with the wrappedObj
 
 
 		public:
-
 		/**
 		 * @brief Constructs a ThreadSafe object which stores an object of type WrappedType.
 		 * @details The arguments provided are perfecly forwarded to the constructor of the WrappedType object.
@@ -151,7 +159,7 @@ namespace thread_safe {
 		/**
 		 * @brief The dereference operator is used to get the instance of the wrapped in object in a thread-safe way.
 		 * @details This operator allows to perform statements like: 
-		 * @code{.cpp}
+		 * @code
 		 * thread_safe::ThreadSafe<std::string> threadSafeObject{"Hello world!"};
 		 * std::string NOT_threadSafeObject = *safe;
 		 * @endcode
@@ -204,42 +212,71 @@ namespace thread_safe {
 		**/
 		template<typename Return>
 		Return operator->*(std::function<Return()> callable) {
-			std::lock_guard<std::mutex>(mtx);
+			std::cout << "\x1B[31mThreadSafe ->*\033[0m\n"; //DEBUG
+			std::unique_lock<std::mutex> guard(mtx);
 			return callable();
 		}		
 
 
-		//if two ThreadSafe objects are separated by a comma, locks those objects' mutexes and return the object representing the list of the locked mutexes
-
-		/** TOREMOVE this comment
-		 * @brief If a comma-separated list of locked mutexes and a ThreadSafe object is present, locks the new object's mutex and add it to the already existent list.
-		 * @details The order of the argument (Locks, ThreadSafe<A>) is relevant, since the comma operator has a left-to-right associativity. This way it is possible to write expressions of the kind `SomeType obj = (ts1, ts2, ts3, ..., tsN)->*foobar(...);`. Note that the use of parentesis to enclose the comma separated list is necessary, since the comma is the least prioritized operator in C++.
-		 * @tparam A The type of the object wrapped in
-		 * @param locks The list of already locked mutexes
-		 * @param ts The new ThreadSafe object to lock
-		 * @return The new list of locked mutexes
-		**/
-
-		/**
-		 * @brief locks the internal mutexes of a list of comma separated ThreadSafe objects.
-		 * @details The order of evaluation of comma operator is left to right. The first pair of ThreadSafe objects of the list will call a specific overload of the `,` operator, which returns a newly constructed anonymous temporary object containing a list of unique_lock(s). The formal type of this object is Locks. The first list contains only the 2 unique_lock(s) relative to the internal mutexes of its arguments. The subsequent pairs of ThreadSafe objects will call another overload of `,` operator, which takes as arguments a Locks object (the one built by the previous `,` operator) and another ThreadSafe object. The internal mutex of this last ThreadSafe object is assigned to a unique_lock and added to the list of the Locks object. The lock object is anonymously returned, so it can be chained with another ThreadSafe object, and so on.
-		 * @warning {deadlock} If the same ThreadSafe object appears multiple time on the list, a deadlock happens.
-		 * @warning {unexpected behaviour} If the first N objects of a comma separated list are of type ThreadSafe, they will be merged into a Locks object and their internal mutexes will be locked, with potential unexpected behaviours.}
-		**/
-		///@{
+		//Comma operators are declared here because they need to be friend with both LocksList and ThreadSafe.
 		template <typename A, typename B>
-		friend Locks operator,(ThreadSafe<A>& ts1, ThreadSafe<B>& ts2) {
-			return Locks(std::unique_lock<std::mutex>(ts1.mtx), std::unique_lock<std::mutex>(ts2.mtx));
-		}
+		friend LocksList operator,(ThreadSafe<A>& ts1, ThreadSafe<B>& ts2);
 
 		template <typename A>
-		friend Locks operator,(Locks locks, ThreadSafe<A>& ts) {
-			locks.add(std::unique_lock<std::mutex>(ts.mtx));
-			return locks;
-		}
-		///@}
+		friend LocksList operator,(LocksList locks, ThreadSafe<A>& ts);
 
 	};
+
+
+	
+	//TODO maybe LocksList can be returned and taken as argument as a reference?
+	//TODO args should be const references (and mtx mutable)?
+	//IMPORTANT LocksList object need more thinking, in particular in ctors visibility (public or private), because shuc a object should only be constructed by the commaoperator overloads
+	/**
+		 * @name Comma Operator
+		 * @brief LocksList the internal mutexes of a list of comma separated ThreadSafe objects.
+		 * @details The order of evaluation of comma operator is left to right. The first pair of ThreadSafe objects of the list will call a specific overload of the `,` operator,					which	returns a newly constructed anonymous temporary object containing a list of unique_lock(s). The formal type of this object is LocksList. The first list			contains only       the 2	  unique_lock(s) relative to the internal mutexes of its arguments. The subsequent pairs of ThreadSafe objects will call another overload of `,`		operator, which		takes as arguments  a LocksList object (the one built by the previous `,` operator) and another ThreadSafe object. The internal mutex of this last		ThreadSafe object is		assigned to a unique_lock	 and added to the list of the LocksList object. The lock object is anonymously returned, so it can be chained	with	another ThreadSafe object, and		  so on. For example:
+		 * @code
+		 *    (ts1, ts2, ts3, ts4);
+		 * // --------->called: operator,(ThreadSafe<A>&, ThreadSafe<B>&)
+		 *    (locks,    ts3, ts4);
+		 * // -------------->called: operator,(LocksList, ThreadSafe<A>&)
+		 *    (locks,         ts4);
+		 * // ------------------->called: operator,(LocksList, ThreadSafe<A>&)
+		 *     locks;
+		 * @endcode
+		 * @warning **Deadlock** If the same ThreadSafe object appears multiple time on the list, a deadlock happens.
+		 * @warning **Unexpected behaviour** If the first N objects of a comma separated list are of type ThreadSafe, they will be merged into a LocksList object and their internal				mutexes	 will be locked, with potential unexpected behaviours.
+		**/
+	///@{
+	/**
+		 * @brief This overload is invoked on the first pair of ThreadSafe objects in a list of comma separated ThreadSafe objects.
+		 * @tparam A The type of the object wrapped in the first ThreadSafe argument.
+		 * @tparam B The type of the object wrapped in the second ThreadSafe argument.
+		 * @param ts1 The first ThreadSafe object whose internal mutex is to be locked.
+		 * @param ts2 The second ThreadSafe object whose internal mutex is to be locked.
+		 * @return A newly constructed anonymous LocksList object, whose internal list contains the unique_lock(s) relative to the the internal mutexes of the arguments.
+		**/
+	template <typename A, typename B>
+	LocksList operator,(ThreadSafe<A>& ts1, ThreadSafe<B>& ts2) {
+		std::cout << "\x1B[31mThreadSafe ,\033[0m\n"; //DEBUG
+		return LocksList{ts1, ts2};
+	}
+
+	/**
+	 * @brief This overload is invoked on a list of comma separated ThreadSafe object, apart from the first pair.
+	 * @tparam A The type of the object wrapped in the ThreadSafe object to lock.
+	 * @param locks The object containing the list of already locked mutexes Uunique_locks(s)).
+	 * @param ts The ThreadSafe object to add to the list of locks.
+	 * @return The locks object with the new lock added to the internal list.
+	**/
+	template <typename A>
+	LocksList operator,(LocksList locks, ThreadSafe<A>& ts) {
+		std::cout << "\x1B[31mLocksList ,\033[0m\n"; //DEBUG
+		locks.add(ts);
+		return locks;
+	}
+	///@}
 
 }
 

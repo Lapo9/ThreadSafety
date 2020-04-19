@@ -7,20 +7,17 @@ int appendAndLenght(std::string app, float x);
 
 void scratch() {
     thread_safe::ThreadSafe<std::string> safe2{"main safe2"};
-    thread_safe::ThreadSafe<std::string> safe3{"safe3"};
+    thread_safe::ThreadSafe<std::vector<int>> safe3{1,4};
     thread_safe::ThreadSafe<std::string> safe4{"safe4"};
     thread_safe::ThreadSafe<std::string> safe5{"safe5"};
 
     //safe2 ->* appendAndLenght(~safe2, 14.9); //ideal form, but how can I achieve this?
     //safe2 ->* appendAndLenght, ~safe2, 14.9; //ok (the only problem is that ->* can get only 1 argument
-    int lenght = (safe2, safe3, safe4) ->* std::function([&safe2](){safe2--.append(" called "); 
+    int lenght = (safe2, safe3, safe4) ->* std::function([&safe2](){safe2--.append(" called"); 
                                                          return (~safe2).size();});     //it works, but it is verbose (moreover how can I avoid the cast to std::function)?
 
-    int a = (safe2, safe3, safe4, safe5).printTEST();
-
     safe2->append(" free ");
-    std::cout << std::string(*safe2) << a << "\t" << lenght;
-
+    std::cout << std::string(*safe2) << lenght;
 }
 
 int appendAndLenght(std::string app, float x) {
