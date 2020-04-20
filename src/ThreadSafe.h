@@ -4,6 +4,8 @@
 #include <mutex>
 #include <functional>
 #include <vector>
+#define __cpp_lib_concepts
+#include <concepts>
 #include <iostream> //DEBUG
 
 //C++20 templates needs to be restricted by concepts (they are available in MSVS2019 preview 16.6 v3)
@@ -34,7 +36,8 @@ namespace thread_safe {
 		}
 
 
-		/**
+		//THINK is this necessary? If someone wants to do more than one thing after the LocksList he can easyly wrap all of the instructions in a lambda and subsequently call it. Example: [...]()->ReturnType{...} () (look at the example in MainTEST/scratch
+		/*
 		 * @brief The `->*` operator is used to chain a function call after a LocksList list.
 		 * @details The callable must be a function with 0 arguments. Inside such callable, any function can be executed with safe access to the ThreadSafe objects mentioned in the left-hand-side list. 
 		 * If inside the callable, at any point, one of the ThreadSafe objects mentioned in the lhs list is accessed through `->` or `*` operators, or is mentioned in a comma separated list preceded only by ThreadSafe objects (or as first item of such list), a deadlock will occur.
@@ -43,11 +46,28 @@ namespace thread_safe {
 		 * @param callable The function with 0 arguments to call.
 		 * @return Return
 		**/
+//		template<typename Return>
+//		friend Return&& operator->*(const LocksList&, std::function<Return()> callable) {
+//			std::cout << "\x1B[31mLocksList ->* (const LocksList&, std::function<Return()>)\033[0m\n"; //DEBUG
+//			return std::forward<Return>(callable());
+//		}
+
+		
+		/**
+		 * @brief The `->*` operator is used to chain an operation after a LocksList list.
+		 * @details Any can be executed with safe access to the ThreadSafe objects mentioned in the left-hand-side list. 
+		 * If during the operation, at any point, one of the ThreadSafe objects mentioned in the lhs list is accessed through `->` or `*` operators, or is mentioned in a comma separated list (preceded only by ThreadSafe objects or as first item of such list), a deadlock will occur.
+		 * The first parameter is not used at all, but it is necessary to call this overload only when the operator has a LocksList as lhs.
+		 * @tparam Return The same return type of the callable.
+		 * @param callable The function with 0 arguments to call.
+		 * @return Return
+		**/
 		template<typename Return>
-		friend Return operator->*(const LocksList&, std::function<Return()> callable) {
-			std::cout << "\x1B[31mLocksList ->*\033[0m\n"; //DEBUG
-			return callable();
+		friend Return&& operator->*(const LocksList&, Return&& ret) {
+			std::cout << "\x1B[31mLocksList ->* (const LocksList&, Return&&)\033[0m\n"; //DEBUG
+			return std::forward<Return>(ret);
 		}
+
 
 		//Comma operators are declared here because they need to be friend with both LocksList and ThreadSafe. This is because I'd like LocksList objects to expose no methods, since they are just an artifact to group more ThreadSafe objects present in a comma separated list.
 		template <typename A, typename B>
@@ -194,7 +214,7 @@ namespace thread_safe {
 		}
 
 
-
+		//TODO update documentation comment
 		/**
 		 * @brief Locks the internal mutex and performs the function defined by the argument.
 		 * @details The internal mutex is locked by a unique_lock. If inside the function the same ThreadSafe object (the lhs operand of this operator) is accessed throught `->`, `*` or `->*` operators, or appears in a comma separated list of ThreadSafe objects, a deadlock happens.
@@ -211,11 +231,12 @@ namespace thread_safe {
 		 * @return The return of the callable.
 		**/
 		template<typename Return>
-		Return operator->*(std::function<Return()> callable) {
+		Return&& operator->*(Return&& ret) {
 			std::cout << "\x1B[31mThreadSafe ->*\033[0m\n"; //DEBUG
 			std::unique_lock<std::mutex> guard(mtx);
-			return callable();
-		}		
+			return std::forward<Return>(ret);
+		}	
+	
 
 
 		//Comma operators are declared here because they need to be friend with both LocksList and ThreadSafe.
@@ -229,9 +250,7 @@ namespace thread_safe {
 
 
 	
-	//TODO maybe LocksList can be returned and taken as argument as a reference?
 	//TODO args should be const references (and mtx mutable)?
-	//IMPORTANT LocksList object need more thinking, in particular in ctors visibility (public or private), because shuc a object should only be constructed by the commaoperator overloads
 	/**
 		 * @name Comma Operator
 		 * @brief LocksList the internal mutexes of a list of comma separated ThreadSafe objects.
@@ -278,6 +297,16 @@ namespace thread_safe {
 	}
 	///@}
 
+
+
+
+
+
+	//TEST it doesn't work!
+	template <std::invocable<void> Callable>
+	auto chainTEST(const LocksList&, Callable callable) {
+		return std::forward<auto>(callable());
+	}
 }
 
 #endif

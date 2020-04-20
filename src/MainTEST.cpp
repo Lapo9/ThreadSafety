@@ -3,24 +3,27 @@
 #include <functional>
 #include "ThreadSafe.h"
 
-int appendAndLenght(std::string app, float x);
+
+int appendAndLenght(std::string& app, float x);
 
 void scratch() {
-    thread_safe::ThreadSafe<std::string> safe2{"main safe2"};
+    thread_safe::ThreadSafe<std::string> safe2{"safe2"};
     thread_safe::ThreadSafe<std::vector<int>> safe3{1,4};
     thread_safe::ThreadSafe<std::string> safe4{"safe4"};
     thread_safe::ThreadSafe<std::string> safe5{"safe5"};
 
-    //safe2 ->* appendAndLenght(~safe2, 14.9); //ideal form, but how can I achieve this?
-    //safe2 ->* appendAndLenght, ~safe2, 14.9; //ok (the only problem is that ->* can get only 1 argument
-    int lenght = (safe2, safe3, safe4) ->* std::function([&safe2](){safe2--.append(" called"); 
-                                                         return (~safe2).size();});     //it works, but it is verbose (moreover how can I avoid the cast to std::function)?
+    int out;
+    //is left to right evaluation of ->* forced? (standard says so...)
+    int lenght2 = (safe2, safe3, safe4) ->* appendAndLenght(~safe2, 14.9); //ideal form, but how can I achieve this?
+    int lenght4 = (safe2, safe3, safe4) ->* [&safe4]()->int{safe4--.append(" lambda"); return (~safe4).size();}();     //it works, but it is verbose (moreover how can I avoid the cast to std::function)?
+    // int lenght4 = thread_safe::chainTEST( (safe2, safe3, safe4), [&safe4](){safe4--.append(" lambda"); return (~safe4).size();});     //it works, but it is verbose (moreover how can I avoid the cast to std::function)?
 
-    safe2->append(" free ");
-    std::cout << std::string(*safe2) << lenght;
+    std::cout << std::string(*safe2) << "\t\x1B[32mlenght2: \033[0m" << lenght2 << "\n";
+    std::cout << std::string(*safe4) << "\t\x1B[32mlenght4: \033[0m" << lenght4 << "\n";
 }
 
-int appendAndLenght(std::string app, float x) {
+int appendAndLenght(std::string& app, float x) {
+    app.append(" ");
     app.append(std::to_string(x));
     int y = app.size();
     return y;
