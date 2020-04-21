@@ -4,7 +4,7 @@
 #include <mutex>
 #include <functional>
 #include <vector>
-#define __cpp_lib_concepts
+//#define __cpp_lib_concepts
 #include <concepts>
 #include <iostream> //DEBUG
 
@@ -106,7 +106,7 @@ namespace thread_safe {
 
 			//Converts the Temp object to the WrappedType of the ThreadSafe object used to constructs this Temp object.
 			operator WrappedType&() {
-				std::cout << "\x1B[31mTemp ->\033[0m\n"; //DEBUG
+				std::cout << "\x1B[31mTemp cast\033[0m\n"; //DEBUG
 				return real.wrappedObj;
 			}
 
@@ -303,10 +303,10 @@ namespace thread_safe {
 
 
 	//TEST it doesn't work!
-	template <std::invocable<void> Callable>
-	auto chainTEST(const LocksList&, Callable callable) {
-		return std::forward<auto>(callable());
-	}
+	//template <std::invocable<void> Callable>
+	//auto chainTEST(const LocksList&, Callable callable) {
+	//	return std::forward<auto>(callable());
+	//}
 }
 
 #endif
