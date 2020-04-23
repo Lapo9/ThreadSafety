@@ -7,6 +7,7 @@
 int appendAndLenght(std::string& app, float x);
 
 void scratch() {
+    std::string notSafe2{"ns2"};
     thread_safe::ThreadSafe<std::string> safe2{"safe2"};
     thread_safe::ThreadSafe<std::vector<int>> safe3{1,4};
     thread_safe::ThreadSafe<std::string> safe4{"safe4"};
@@ -14,7 +15,8 @@ void scratch() {
 
     int out = 9;
 
-    //is left to right evaluation of ->* forced? (standard says so...)
+    //is left to right evaluation of ->* forced? (standard says so: https://en.cppreference.com/w/cpp/language/eval_order)
+    *safe2 ->* appendAndLenght(notSafe2, 7126);
     int lenght2 = (safe2, safe3, safe4) ->* appendAndLenght(~safe2, 14.9); //ideal form, but how can I achieve this?
     int lenght4 = (safe2, safe3, safe4) ->* [&safe4]()->int{safe4--.append(" lambda"); return (~safe4).size();}();
     (safe2, safe3, safe4) ->* (int(*safe5) = appendAndLenght(~safe2, 3)); //NOTWORKING (but int(*safef) should be an lvalue since cast operator returns a ref)
@@ -49,6 +51,8 @@ int main() {
     std::string notSafe1 = *safe1;
 
     std::cout << "\n\n" << std::string(*safe1) << "\t" << notSafe1; //print the string safely
+    operator<<(std::cout, *safe1);
+    
     std::cout << "\n\n" << ~safe1; //print the string NOT safely
 
     std::cout << "\n\n" << std::string(**pSafe1); //print the string safely

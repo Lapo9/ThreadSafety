@@ -46,7 +46,7 @@ namespace thread_safe {
 		 * @param callable The function with 0 arguments to call.
 		 * @return Return
 		**/
-//		template<typename Return>
+		//		template<typename Return>
 //		friend Return&& operator->*(const LocksList&, std::function<Return()> callable) {
 //			std::cout << "\x1B[31mLocksList ->* (const LocksList&, std::function<Return()>)\033[0m\n"; //DEBUG
 //			return std::forward<Return>(callable());
@@ -55,11 +55,11 @@ namespace thread_safe {
 		
 		/**
 		 * @brief The `->*` operator is used to chain an operation after a LocksList list.
-		 * @details Any can be executed with safe access to the ThreadSafe objects mentioned in the left-hand-side list. 
-		 * If during the operation, at any point, one of the ThreadSafe objects mentioned in the lhs list is accessed through `->` or `*` operators, or is mentioned in a comma separated list (preceded only by ThreadSafe objects or as first item of such list), a deadlock will occur.
+		 * @details Any operaton can be executed with safe access to the ThreadSafe objects mentioned in the left-hand-side list. 
+		 * If during the operation specified as rhs, at any point, one of the ThreadSafe objects mentioned in the lhs list is accessed through `->` or `*` operators, or is mentioned in a comma separated list (preceded only by ThreadSafe objects or as first item of such list), a deadlock will occur.
 		 * The first parameter is not used at all, but it is necessary to call this overload only when the operator has a LocksList as lhs.
-		 * @tparam Return The same return type of the callable.
-		 * @param callable The function with 0 arguments to call.
+		 * @tparam Return The same return type of the operation specifeid as rhs.
+		 * @param ret The operation to execute.
 		 * @return Return
 		**/
 		template<typename Return>
@@ -108,6 +108,22 @@ namespace thread_safe {
 			operator WrappedType&() {
 				std::cout << "\x1B[31mTemp cast\033[0m\n"; //DEBUG
 				return real.wrappedObj;
+			}
+
+			//TODO update documentation comment
+			/**
+			 * @brief The `->*` operator is used to chain an operation after the locking of a ThreadSafe object.
+			 * @details Any operation can be executed with safe access to the ThreadSafe object mentioned in the left-hand-side.
+			 * If during the operation specified as rhs, at any point, the ThreadSafe objects mentioned in the lhs is accessed through `->` or `*` operators, or is mentioned in a comma separated list (preceded only by ThreadSafe objects or as first item of such list), a deadlock  will occur.
+			 * The first parameter is not used at all, but it is necessary to call this overload only when the operator has a single locked ThreadSafe object as lhs.
+			 * @tparam Return The same return type of the operation specifeid as rhs.
+			 * @param ret The operation to execute.
+			 * @return Return
+			*/
+			template<typename Return>
+			friend Return&& operator->*(const Temp&, Return&& ret) {
+				std::cout << "\x1B[31mThreadSafe ->*\033[0m\n"; //DEBUG
+				return std::forward<Return>(ret);
 			}
 
 		};
@@ -212,32 +228,7 @@ namespace thread_safe {
 			std::cout << "\x1B[31mThreadSafe --\033[0m\n"; //DEBUG
 			return wrappedObj;
 		}
-
-
-		//TODO update documentation comment
-		/**
-		 * @brief Locks the internal mutex and performs the function defined by the argument.
-		 * @details The internal mutex is locked by a unique_lock. If inside the function the same ThreadSafe object (the lhs operand of this operator) is accessed throught `->`, `*` or `->*` operators, or appears in a comma separated list of ThreadSafe objects, a deadlock happens.
-		 * Example of usage:
-		 * @code
-		 * thread_safe::ThreadSafe<std::string> threadSafeObject{"Hello"};
-		 * int lenght = threadSafeObject ->* std::function([&threadSafeObject](){
-		 *                                                    (~threadSafeObject).append(" world!"); 
-         *                                                    return (~safe2).size();
-		 *                                                });
-		 * @endcode
-		 * @tparam Return The return type of the callable.
-		 * @param callable The actions to be performed after the lock of the internal mutex. Such function must have 0 arguments.
-		 * @return The return of the callable.
-		**/
-		template<typename Return>
-		Return&& operator->*(Return&& ret) {
-			std::cout << "\x1B[31mThreadSafe ->*\033[0m\n"; //DEBUG
-			std::unique_lock<std::mutex> guard(mtx);
-			return std::forward<Return>(ret);
-		}	
 	
-
 
 		//Comma operators are declared here because they need to be friend with both LocksList and ThreadSafe.
 		template <typename A, typename B>
