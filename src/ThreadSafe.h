@@ -4,7 +4,8 @@
 #include <mutex>
 #include <functional>
 #include <vector>
-//#define __cpp_lib_concepts
+#include <string>
+#define __cpp_lib_concepts
 #include <concepts>
 #include <iostream> //DEBUG
 
@@ -104,6 +105,7 @@ namespace thread_safe {
 				return &real.wrappedObj;
 			}
 
+			//TODO now it is const to be compatible with the overloaded <<
 			//Converts the Temp object to the WrappedType of the ThreadSafe object used to constructs this Temp object.
 			operator WrappedType&() {
 				std::cout << "\x1B[31mTemp cast\033[0m\n"; //DEBUG
@@ -124,6 +126,22 @@ namespace thread_safe {
 			friend Return&& operator->*(const Temp&, Return&& ret) {
 				std::cout << "\x1B[31mThreadSafe ->*\033[0m\n"; //DEBUG
 				return std::forward<Return>(ret);
+			}
+
+			//TODO make all of the operators, but before understand well the functioning of this operator!
+			//Read more about decltype(auto) and the difference with auto&& (basically auto&& always returns a reference, which isn't what I want).
+			//Should LHS be constrained by a "Has<<" concept
+			/**
+			 * @brief Calls the `<<` operator by forwarding the generic left-hand-side and by casting the right-hand-side of type Temp to the WrappedType.
+			 * @tparam LHS The type of the left-hand-side operand.
+			 * @tparam TEMP The type of the right-hand-side operand, which must be a Temp.
+			 * @param lhs The left-hand-side operand.
+			 * @param temp The right-hand-side operand, which must be a Temp object.
+			 * @return The same object returned by the `<<` operator called with lhs as left-hand-side and temp converted to its WrappedType as right-hand-side.
+			**/
+			template<typename LHS, std::same_as<Temp> TEMP>
+			friend decltype(auto) operator<<(LHS&& lhs, TEMP&& temp) {
+				return std::forward<LHS>(lhs) << std::forward<WrappedType>(WrappedType(temp));
 			}
 
 		};
@@ -289,15 +307,8 @@ namespace thread_safe {
 	///@}
 
 
+	
 
-
-
-
-	//TEST it doesn't work!
-	//template <std::invocable<void> Callable>
-	//auto chainTEST(const LocksList&, Callable callable) {
-	//	return std::forward<auto>(callable());
-	//}
 }
 
 #endif
