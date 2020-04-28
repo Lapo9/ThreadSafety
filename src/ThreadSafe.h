@@ -91,25 +91,25 @@ namespace thread_safe {
 
 		//The temporary class instantiated each time an object of type ThreadSafe is accessed. The object is destroyed at the end of the full expression where it has been accessed.
 		class Temp {
-			ThreadSafe& real; //The reference to the permanent object.
-			std::lock_guard<std::mutex> guard {real.mtx};
+			ThreadSafe* real; //The reference to the permanent object.
+			std::lock_guard<std::mutex> guard {real->mtx};
 
 
 			public:
 			//Constructs a Temp object given a ThreadSafe reference. This is the only way to build a Temp object.
-			Temp(ThreadSafe& real) : real{real} {}
+			Temp(ThreadSafe& real) : real{&real} {}
 
 			//Returns the object wrapped in the ThreadSafe object used to build this Temp Object. A pointer is returned because `->` needs a pointer as return type.
 			WrappedType* operator->() {
 				std::cout << "\x1B[31mTemp ->\033[0m\n"; //DEBUG
-				return &real.wrappedObj;
+				return &(real->wrappedObj);
 			}
 
 			//TODO now it is const to be compatible with the overloaded <<
 			//Converts the Temp object to the WrappedType of the ThreadSafe object used to constructs this Temp object.
 			operator WrappedType&() {
 				std::cout << "\x1B[31mTemp cast\033[0m\n"; //DEBUG
-				return real.wrappedObj;
+				return real->wrappedObj;
 			}
 
 			//TODO update documentation comment
@@ -128,32 +128,14 @@ namespace thread_safe {
 				return std::forward<Return>(ret);
 			}
 
-			//TODO make all of the operators, but before understand well the functioning of this operator!
-			//Read more about decltype(auto) and the difference with auto&& (basically auto&& always returns a reference, which isn't what I want).
-			//Should LHS be constrained by a "Has<<" concept
-			/**
-			 * @brief Calls the `<<` operator by forwarding the generic left-hand-side and by casting the right-hand-side of type Temp to the WrappedType.
-			 * @tparam LHS The type of the left-hand-side operand.
-			 * @tparam TEMP The type of the right-hand-side operand, which must be a Temp.
-			 * @param lhs The left-hand-side operand.
-			 * @param temp The right-hand-side operand, which must be a Temp object.
-			 * @return The same object returned by the `<<` operator called with lhs as left-hand-side and temp converted to its WrappedType as right-hand-side.
-			**/
-			template<typename LHS, std::same_as<Temp> TEMP>
-			friend decltype(auto) operator<<(LHS&& lhs, TEMP&& temp) {
-				return std::forward<LHS>(lhs) << std::forward<WrappedType>(WrappedType(temp));
-			}
-
 		};
-
-		friend class LocksList; //LocksList objects needs to access some private members of ThreadSafe objects (in particular mtx).
-
 
 		WrappedType wrappedObj; //Object to wrap into this ThreadSafe object
 		std::mutex mtx; //Internal mutex associated with the wrappedObj
 
 
 		public:
+
 		/**
 		 * @brief Constructs a ThreadSafe object which stores an object of type WrappedType.
 		 * @details The arguments provided are perfecly forwarded to the constructor of the WrappedType object.
@@ -161,14 +143,18 @@ namespace thread_safe {
 		 * @param args The arguments passed to the constructor of the WrappedType object via perfect forwarding.
 		**/
 		template<typename ...ArgsType>
-		ThreadSafe(ArgsType&&... args) : wrappedObj(std::forward<ArgsType>(args)...) {}
-		
+		ThreadSafe(ArgsType&&... args) : wrappedObj(std::forward<ArgsType>(args)...) {
+			std::cout << "\x1B[33mThreadSafe ctor\033[0m\n"; //DEBUG
+		}
+
 		/**
 		 * @brief Constructs a new ThreadSafe object using the copy constructor of the WrappedType object.
 		 * @details The internal mutex is not copyed, but is newly initialized.
 		 * @param ts ThreadSafe obeject to copy.
 		**/
-		ThreadSafe(ThreadSafe& ts) : wrappedObj{ts.wrappedObj} {}
+		ThreadSafe(ThreadSafe& ts) : wrappedObj{ts.wrappedObj} {
+			std::cout << "\x1B[33mThreadSafe copy ctor\033[0m\n"; //DEBUG
+		}
 
 		/**
 		 * @brief Constructs a new ThreadSafe object using the copy '=' operator of the WrappedType object.
@@ -176,6 +162,7 @@ namespace thread_safe {
 		 * @param ts ThreadSafe obeject to copy.
 		**/
 		ThreadSafe& operator=(ThreadSafe& ts) {
+			std::cout << "\x1B[33mThreadSafe copy =\033[0m\n"; //DEBUG
 			wrappedObj = ts.wrappedObj;
 			return *this;
 		}
@@ -186,7 +173,9 @@ namespace thread_safe {
 		 * @details The internal mutex is not moved, but is newly initialized.
 		 * @param ts ThreadSafe obeject to move.
 		**/
-		ThreadSafe(ThreadSafe&& ts) : wrappedObj{ std::move(ts.wrappedObj)} {}
+		ThreadSafe(ThreadSafe&& ts) : wrappedObj{ std::move(ts.wrappedObj)} {
+			std::cout << "\x1B[33mThreadSafe move ctor\033[0m\n"; //DEBUG
+		}
 
 		/**
 		 * @brief Moves the ThreadSafe object using the move '=' operator of the WrappedType object.
@@ -194,6 +183,7 @@ namespace thread_safe {
 		 * @param ts ThreadSafe obeject to move.
 		**/
 		ThreadSafe& operator=(ThreadSafe&& ts) {
+			std::cout << "\x1B[33mThreadSafe move =\033[0m\n"; //DEBUG
 			wrappedObj = std::move(ts.wrappedObj);
 		}
 		
@@ -209,7 +199,6 @@ namespace thread_safe {
 			return Temp(*this);
 		}
 
-
 		/**
 		 * @brief The dereference operator is used to get the instance of the wrapped in object in a thread-safe way.
 		 * @details This operator allows to perform statements like: 
@@ -221,13 +210,11 @@ namespace thread_safe {
 		 * When a ThreadSafe object is dereferenced, a temporary object is returned. Such temporary object can be implicitly converted to WrappedType.
 		 * @return An anonymous temporary object of type Temp, which holds a reference to this object, and locks the internal mutex on creation using a unique_lock.
 		**/
-		Temp operator*() {
-			std::cout << "\x1B[31mThreadSafe *\033[0m\n"; //DEBUG
-			return Temp(*this);
-		}
+//		Temp operator*() {
+//			std::cout << "\x1B[31mThreadSafe *\033[0m\n"; //DEBUG
+//			return Temp(*this);
+//		}
 
-
-		//TODO these 2 functions do the same thing, I have to choose one. The first one is more "elegant", the operator has to be before the object, but it needs to be between () (because it has less precedence than '.'). The second one needs no (), but it is more confusing
 		/**
 		 * @brief This operator is used to get the naked WrappedType object.
 		 * @details Since `~` operator has a lower priority than mamber access operator (`.`), is almost always needed that the sub-expression `~threadSafeObject` is enclosed inside parentheses:
@@ -241,12 +228,66 @@ namespace thread_safe {
 			std::cout << "\x1B[31mThreadSafe ~\033[0m\n"; //DEBUG
 			return wrappedObj;
 		}
-		//TOREMOVE
-		WrappedType& operator--(int) {
-			std::cout << "\x1B[31mThreadSafe --\033[0m\n"; //DEBUG
-			return wrappedObj;
+
+
+		///////////////////
+		///		TEST	///
+		//////////////////
+		//protects the object (what before was done by *)
+		Temp protect() {
+			std::cout << "\x1B[31mThreadSafe protect\033[0m\n"; //DEBUG
+			return Temp(*this);
 		}
+
+
+		//TODO make all of the operators, but before understand well the functioning of this very operator!
+		//Should LHS be constrained by a "Has<<" concept? (Imho no, because if the user messed up it's his problem, not mine. This is just a wrapper.)
+		/**
+		 * @brief Calls the `<<` operator by forwarding the generic left-hand-side and by casting the right-hand-side of type ThreadSafe<WrappedType> to the WrappedType.
+		 * @tparam LHS The type of the left-hand-side operand.
+		 * @tparam TS The type of the right-hand-side operand, which must be a ThreadSafe<WrappedType>.
+		 * @param lhs The left-hand-side operand.
+		 * @param ts The right-hand-side operand, which must be a ThreadSafe<WrappedType> object.
+		 * @return The same object returned by the `<<` operator called with lhs as left-hand-side and ts converted to its WrappedType as right-hand-side.
+		**/
+		template<typename LHS, typename TS>
+		requires std::same_as<ThreadSafe<WrappedType>, typename std::remove_cvref<TS>::type>
+		friend decltype(auto) operator<<(LHS&& lhs, TS&& ts) {
+			std::cout << "\x1B[31mThreadSafe <<rhs\033[0m\n"; //DEBUG
+			return std::forward<LHS>(lhs) << std::forward<WrappedType>(WrappedType(ts.protect()));
+		}
+
+
+		template<typename TS, typename RHS>
+		requires std::same_as<ThreadSafe<WrappedType>, typename std::remove_cvref<TS>::type>
+		friend decltype(auto) operator<<(TS&& ts, RHS&& rhs) {
+			std::cout << "\x1B[31mThreadSafe <<lhs\033[0m\n"; //DEBUG
+			return std::forward<WrappedType>(WrappedType(ts.protect())) << std::forward<RHS>(rhs);
+		}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 	
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///										FRIENDS																///
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		friend class LocksList; //LocksList objects needs to access some private members of ThreadSafe objects (in particular mtx).
 
 		//Comma operators are declared here because they need to be friend with both LocksList and ThreadSafe.
 		template <typename A, typename B>
