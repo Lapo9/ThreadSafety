@@ -18,7 +18,7 @@
     <ClInclude Include="src\ThreadSafe.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Test.h">
+    <ClInclude Include="src\Testt.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

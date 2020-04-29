@@ -5,9 +5,11 @@
 #include <functional>
 #include <vector>
 #include <string>
+#include <type_traits> //DEBUG
 #define __cpp_lib_concepts
 #include <concepts>
 #include <iostream> //DEBUG
+#include "Testt.h" //DEBUG
 
 //C++20 templates needs to be restricted by concepts (they are available in MSVS2019 preview 16.6 v3)
 namespace thread_safe {
@@ -144,7 +146,7 @@ namespace thread_safe {
 		**/
 		template<typename ...ArgsType>
 		ThreadSafe(ArgsType&&... args) : wrappedObj(std::forward<ArgsType>(args)...) {
-			std::cout << "\x1B[33mThreadSafe ctor\033[0m\n"; //DEBUG
+			std::cout << "\x1B[41mThreadSafe ctor\033[0m\n"; //DEBUG
 		}
 
 		/**
@@ -153,7 +155,7 @@ namespace thread_safe {
 		 * @param ts ThreadSafe obeject to copy.
 		**/
 		ThreadSafe(ThreadSafe& ts) : wrappedObj{ts.wrappedObj} {
-			std::cout << "\x1B[33mThreadSafe copy ctor\033[0m\n"; //DEBUG
+			std::cout << "\x1B[41mThreadSafe copy ctor\033[0m\n"; //DEBUG
 		}
 
 		/**
@@ -162,7 +164,7 @@ namespace thread_safe {
 		 * @param ts ThreadSafe obeject to copy.
 		**/
 		ThreadSafe& operator=(ThreadSafe& ts) {
-			std::cout << "\x1B[33mThreadSafe copy =\033[0m\n"; //DEBUG
+			std::cout << "\x1B[41mThreadSafe copy =\033[0m\n"; //DEBUG
 			wrappedObj = ts.wrappedObj;
 			return *this;
 		}
@@ -174,7 +176,7 @@ namespace thread_safe {
 		 * @param ts ThreadSafe obeject to move.
 		**/
 		ThreadSafe(ThreadSafe&& ts) : wrappedObj{ std::move(ts.wrappedObj)} {
-			std::cout << "\x1B[33mThreadSafe move ctor\033[0m\n"; //DEBUG
+			std::cout << "\x1B[41mThreadSafe move ctor\033[0m\n"; //DEBUG
 		}
 
 		/**
@@ -183,7 +185,7 @@ namespace thread_safe {
 		 * @param ts ThreadSafe obeject to move.
 		**/
 		ThreadSafe& operator=(ThreadSafe&& ts) {
-			std::cout << "\x1B[33mThreadSafe move =\033[0m\n"; //DEBUG
+			std::cout << "\x1B[41mThreadSafe move =\033[0m\n"; //DEBUG
 			wrappedObj = std::move(ts.wrappedObj);
 		}
 		
@@ -231,7 +233,7 @@ namespace thread_safe {
 
 
 		///////////////////
-		///		TEST	///
+		///	  TEST	 ///
 		//////////////////
 		//protects the object (what before was done by *)
 		Temp protect() {
@@ -254,16 +256,27 @@ namespace thread_safe {
 		requires std::same_as<ThreadSafe<WrappedType>, typename std::remove_cvref<TS>::type>
 		friend decltype(auto) operator<<(LHS&& lhs, TS&& ts) {
 			std::cout << "\x1B[31mThreadSafe <<rhs\033[0m\n"; //DEBUG
-			return std::forward<LHS>(lhs) << std::forward<WrappedType>(WrappedType(ts.protect()));
+
+			//create a non-owning pointer in order to pass a lvalue to std::forward (next line)
+			//WrappedType* temp = &(ts.protect().operator WrappedType&()); //I have to use this syntax to call the cast operator in order to avoid to call the potential copy constructor of the class WrappedType
+
+			return std::forward<LHS>(lhs) << (ts.protect().operator WrappedType & ()); //*temp;
 		}
 
 
-		template<typename TS, typename RHS>
-		requires std::same_as<ThreadSafe<WrappedType>, typename std::remove_cvref<TS>::type>
-		friend decltype(auto) operator<<(TS&& ts, RHS&& rhs) {
-			std::cout << "\x1B[31mThreadSafe <<lhs\033[0m\n"; //DEBUG
-			return std::forward<WrappedType>(WrappedType(ts.protect())) << std::forward<RHS>(rhs);
-		}
+		/*
+		
+		L'obiettivo è passare a << un rvalue se ts è stato passato come rvalue, e un lvalue se ts è stato passato come un lvalue. Il << può accettare by value, by lvalue reference, by const lvalue reference, by rvalue reference. Ma const non ci interessa qui (tanto poi è dentro la funzione << che sarò const), l'unica differenza è se prende by value o by reference.
+		
+		*/
+
+
+//		template<typename TS, typename RHS>
+//		requires std::same_as<ThreadSafe<WrappedType>, typename std::remove_cvref<TS>::type>
+//		friend decltype(auto) operator<<(TS&& ts, RHS&& rhs) {
+//			std::cout << "\x1B[31mThreadSafe <<lhs\033[0m\n"; //DEBUG
+//			return std::forward<WrappedType>(WrappedType(ts.protect())) << std::forward<RHS>(rhs);
+//		}
 
 
 
@@ -348,6 +361,20 @@ namespace thread_safe {
 	///@}
 
 
+
+
+	// TEST FUNCTION TEMPLATE forward (here because I want to step into dureing debug)
+	template <class _Ty>
+	constexpr _Ty&& forward(
+		std::remove_reference_t<_Ty>& _Arg) noexcept { // forward an lvalue as either an lvalue or an rvalue
+		return static_cast<_Ty&&>(_Arg);
+	}
+
+	template <class _Ty>
+	constexpr _Ty&& forward(std::remove_reference_t<_Ty>&& _Arg) noexcept { // forward an rvalue as an rvalue
+		static_assert(!std::is_lvalue_reference_v<_Ty>, "bad forward call");
+		return static_cast<_Ty&&>(_Arg);
+	}
 	
 
 }

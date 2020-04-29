@@ -3,6 +3,7 @@
 #include <functional>
 #include <sstream>
 #include "ThreadSafe.h"
+#include "Testt.h"
 
 #define SCRATCH 0
 #define BASIC 0
@@ -67,13 +68,14 @@ void basic() {
 }
 #endif
 
+
 #if AUTOCAST
 void autoCast() {
-    thread_safe::ThreadSafe<std::string> safe1{"safe1"};
-    thread_safe::ThreadSafe<std::stringstream> notSafe1{"notSafe1"};
-    //notSafe1 << "ggg";
+    thread_safe::ThreadSafe<Testt> t1;
 
-    std::cout << safe1 << "gg";
+    int x = 9;
+    //t1 << x;
+    x << t1;
 }
 #endif
 
