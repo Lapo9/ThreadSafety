@@ -11,6 +11,7 @@
 #include <iostream> //DEBUG
 #include "Testt.h" //DEBUG
 
+//TODO maybe the Wrapped object should be volatile?
 //C++20 templates needs to be restricted by concepts (they are available in MSVS2019 preview 16.6 v3)
 namespace thread_safe {
 
@@ -99,18 +100,25 @@ namespace thread_safe {
 
 			public:
 			//Constructs a Temp object given a ThreadSafe reference. This is the only way to build a Temp object.
-			Temp(ThreadSafe& real) : real{&real} {}
+			Temp(ThreadSafe& real) : real{&real} {
+				std::cout << "\x1B[46mTemp ctor\033[0m\n"; //DEBUG
+			}
+
+			//DEBUG
+			~Temp() {
+				std::cout << "\x1B[46mTemp dtor\033[0m\n"; //DEBUG
+			}
 
 			//Returns the object wrapped in the ThreadSafe object used to build this Temp Object. A pointer is returned because `->` needs a pointer as return type.
 			WrappedType* operator->() {
-				std::cout << "\x1B[31mTemp ->\033[0m\n"; //DEBUG
+				std::cout << "\x1B[36mTemp ->\033[0m\n"; //DEBUG
 				return &(real->wrappedObj);
 			}
 
 			//TODO now it is const to be compatible with the overloaded <<
 			//Converts the Temp object to the WrappedType of the ThreadSafe object used to constructs this Temp object.
 			operator WrappedType&() {
-				std::cout << "\x1B[31mTemp cast\033[0m\n"; //DEBUG
+				std::cout << "\x1B[36mTemp cast\033[0m\n"; //DEBUG
 				return real->wrappedObj;
 			}
 
@@ -126,9 +134,78 @@ namespace thread_safe {
 			*/
 			template<typename Return>
 			friend Return&& operator->*(const Temp&, Return&& ret) {
-				std::cout << "\x1B[31mThreadSafe ->*\033[0m\n"; //DEBUG
+				std::cout << "\x1B[36mThreadSafe ->*\033[0m\n"; //DEBUG
 				return std::forward<Return>(ret);
 			}
+
+
+
+
+
+
+
+			//TODO make all of the operators, but before understand well the functioning of this very operator!
+//Should LHS be constrained by a "Has<<" concept? (Imho no, because if the user messed up it's his problem, not mine. This is just a wrapper.)
+// probabilmente non era una buona idea fare che prendeva un ThreadSafe, perchè se poi un operatore vuole ricevere tutto l'oggetto thread safe e non solo il wrapped, come fa? (soprattutto nel caso di move, lo protegge ma poi ne perde la responsabilità, e il nuovo proprietario ha solo l'oggetto wrapped protetto, ma non può sproteggerlo, perchè la responsabilità della protezione è rimasta al vecchio proprietario)
+			/**
+			 * @brief Calls the `<<` operator by forwarding the generic left-hand-side and by casting the right-hand-side of type ThreadSafe<WrappedType> to the WrappedType.
+			 * @tparam LHS The type of the left-hand-side operand.
+			 * @tparam TS The type of the right-hand-side operand, which must be a ThreadSafe<WrappedType>.
+			 * @param lhs The left-hand-side operand.
+			 * @param ts The right-hand-side operand, which must be a ThreadSafe<WrappedType> object.
+			 * @return The same object returned by the `<<` operator called with lhs as left-hand-side and ts converted to its WrappedType as right-hand-side.
+			**/
+			template<typename LHS, typename TS>
+			requires std::same_as<Temp, typename std::remove_cvref<TS>::type>
+			friend decltype(auto) operator<<(LHS&& lhs, TS&& ts) {
+
+				//ways to call:
+				// xxx << ts; A
+				// xxx << move(ts); B
+				// xxx << Ts{...}; C
+
+				//ways to receive:
+				// << (Xxx, Ts) by val 1
+				// << (Xxx, Ts&) by lvalue ref 2
+				// << (Xxx, const Ts&) by const lvalue ref 3
+				// << (Xxx, Ts&&) by rvalue ref 4
+
+				//combinations:
+				// A 1 --> copy ctor
+				// A 2 --> nothing
+				// A 3 --> nothing
+				// A 4 --> error
+				// B 1 --> move ctor
+				// B 2 --> error
+				// B 3 --> nothing
+				// B 4 --> nothing
+				// C 1 --> likely copy elision (?)
+				// C 2 --> error
+				// C 3 --> nothing
+				// C 4 --> nothing
+
+				//se mi danno un rvalue (C) esso dovrà subire move, perchè dentro questo wrapper quell'rvalue ha un nome (il nome dell'arg), dunque è un lvalue, quindi devo trasformarlo in un //value
+				//se mi danno un lvalue (A), lo devo passare normalmente
+				//se mi danno un rvalue (B) devo fare come se mi dessero un (C)
+				bool noref = std::is_same<Temp, TS>::value; //DEBUG
+				bool lvref = std::is_lvalue_reference_v<TS>; //DEBUG
+				bool rvref = std::is_rvalue_reference_v<TS>; //DEBUG
+
+				std::cout << "\x1B[31mTemp <<rhs\033[0m\n"; //DEBUG
+				return std::forward<LHS>(lhs) << std::move(ts.operator WrappedType & ());
+
+			}
+
+			/*
+
+			L'obiettivo è passare a << un rvalue se ts è stato passato come rvalue, e un lvalue se ts è stato passato come un lvalue. Il << può accettare by value, by lvalue reference, by const lvalue reference, by rvalue reference. Ma const non ci interessa qui (tanto poi è dentro la funzione << che sarò const), l'unica differenza è se prende by value o by reference.
+
+			*/
+
+
+
+
+
 
 		};
 
@@ -198,9 +275,10 @@ namespace thread_safe {
 		*/
 		Temp operator->() {
 			std::cout << "\x1B[31mThreadSafe ->\033[0m\n"; //DEBUG
-			return Temp(*this);
+			return Temp{*this};
 		}
 
+		//this method always returns a rvalue (not a ref to an lvalue) and this is bad, because this hides the way an object has been passed to a method (I cannot pass a protected object to a method by lvalue reference). On the other hand it is the only way to destroy the Temp object at the end of the full expression.
 		/**
 		 * @brief The dereference operator is used to get the instance of the wrapped in object in a thread-safe way.
 		 * @details This operator allows to perform statements like: 
@@ -212,10 +290,10 @@ namespace thread_safe {
 		 * When a ThreadSafe object is dereferenced, a temporary object is returned. Such temporary object can be implicitly converted to WrappedType.
 		 * @return An anonymous temporary object of type Temp, which holds a reference to this object, and locks the internal mutex on creation using a unique_lock.
 		**/
-//		Temp operator*() {
-//			std::cout << "\x1B[31mThreadSafe *\033[0m\n"; //DEBUG
-//			return Temp(*this);
-//		}
+		Temp operator*() {
+			std::cout << "\x1B[31mThreadSafe *\033[0m\n"; //DEBUG
+			return Temp{*this};
+		}
 
 		/**
 		 * @brief This operator is used to get the naked WrappedType object.
@@ -232,45 +310,8 @@ namespace thread_safe {
 		}
 
 
-		///////////////////
-		///	  TEST	 ///
-		//////////////////
-		//protects the object (what before was done by *)
-		Temp protect() {
-			std::cout << "\x1B[31mThreadSafe protect\033[0m\n"; //DEBUG
-			return Temp(*this);
-		}
 
-
-		//TODO make all of the operators, but before understand well the functioning of this very operator!
-		//Should LHS be constrained by a "Has<<" concept? (Imho no, because if the user messed up it's his problem, not mine. This is just a wrapper.)
-		/**
-		 * @brief Calls the `<<` operator by forwarding the generic left-hand-side and by casting the right-hand-side of type ThreadSafe<WrappedType> to the WrappedType.
-		 * @tparam LHS The type of the left-hand-side operand.
-		 * @tparam TS The type of the right-hand-side operand, which must be a ThreadSafe<WrappedType>.
-		 * @param lhs The left-hand-side operand.
-		 * @param ts The right-hand-side operand, which must be a ThreadSafe<WrappedType> object.
-		 * @return The same object returned by the `<<` operator called with lhs as left-hand-side and ts converted to its WrappedType as right-hand-side.
-		**/
-		template<typename LHS, typename TS>
-		requires std::same_as<ThreadSafe<WrappedType>, typename std::remove_cvref<TS>::type>
-		friend decltype(auto) operator<<(LHS&& lhs, TS&& ts) {
-			std::cout << "\x1B[31mThreadSafe <<rhs\033[0m\n"; //DEBUG
-
-			//create a non-owning pointer in order to pass a lvalue to std::forward (next line)
-			//WrappedType* temp = &(ts.protect().operator WrappedType&()); //I have to use this syntax to call the cast operator in order to avoid to call the potential copy constructor of the class WrappedType
-
-			return std::forward<LHS>(lhs) << (ts.protect().operator WrappedType & ()); //*temp;
-		}
-
-
-		/*
-		
-		L'obiettivo è passare a << un rvalue se ts è stato passato come rvalue, e un lvalue se ts è stato passato come un lvalue. Il << può accettare by value, by lvalue reference, by const lvalue reference, by rvalue reference. Ma const non ci interessa qui (tanto poi è dentro la funzione << che sarò const), l'unica differenza è se prende by value o by reference.
-		
-		*/
-
-
+		//TOREMOVE
 //		template<typename TS, typename RHS>
 //		requires std::same_as<ThreadSafe<WrappedType>, typename std::remove_cvref<TS>::type>
 //		friend decltype(auto) operator<<(TS&& ts, RHS&& rhs) {
@@ -282,23 +323,9 @@ namespace thread_safe {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 	
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///										FRIENDS																///
+///										FRIENDS												///
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 		friend class LocksList; //LocksList objects needs to access some private members of ThreadSafe objects (in particular mtx).
 
@@ -360,21 +387,6 @@ namespace thread_safe {
 	}
 	///@}
 
-
-
-
-	// TEST FUNCTION TEMPLATE forward (here because I want to step into dureing debug)
-	template <class _Ty>
-	constexpr _Ty&& forward(
-		std::remove_reference_t<_Ty>& _Arg) noexcept { // forward an lvalue as either an lvalue or an rvalue
-		return static_cast<_Ty&&>(_Arg);
-	}
-
-	template <class _Ty>
-	constexpr _Ty&& forward(std::remove_reference_t<_Ty>&& _Arg) noexcept { // forward an rvalue as an rvalue
-		static_assert(!std::is_lvalue_reference_v<_Ty>, "bad forward call");
-		return static_cast<_Ty&&>(_Arg);
-	}
 	
 
 }

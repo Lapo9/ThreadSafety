@@ -50,10 +50,10 @@ void basic() {
     thread_safe::ThreadSafe<std::string>* pSafe1 = &thread_safe::ThreadSafe<std::string>("Pointer");
 
     safe1->append("oooooooooo"); //append something to the protected string
-    (~safe1).append(" how are you?"); //append something to the string NOT safely (method 1)
+    (~safe1).append(" how are you?"); //append something to the string NOT safely
 
     (*pSafe1)->append(" /|/|/|/"); //append something to the pointer string safely
-    (~*pSafe1).append(" -_-_-_-_-_-_"); //append something to the pointer string NOT safely (method 1)
+    (~*pSafe1).append(" -_-_-_-_-_-_"); //append something to the pointer string NOT safely
 
     std::string notSafe1 = *safe1;
     //std::cout << "\n\n" << (*safe1) << "\t" << notSafe1; //print the string safely
@@ -70,12 +70,40 @@ void basic() {
 
 
 #if AUTOCAST
-void autoCast() {
-    thread_safe::ThreadSafe<Testt> t1;
 
-    int x = 9;
-    //t1 << x;
-    x << t1;
+//void foo(const Testt& t) {
+//    std::cout << "\nconst T&\n";
+//}
+//
+//void foo(Testt&& t) {
+//    std::cout << "\nT&&\n";
+//}
+
+
+void foo(Testt t) {
+    std::cout << "\nfoo\n";
+}
+
+
+Testt bar(Testt& t) {
+    std::cout << "\nbar\n";
+    return t;
+}
+
+
+void autoCast() {
+
+    Testt tt1;
+
+    foo(bar(tt1));
+    foo(std::move(bar(tt1)));
+
+
+    //thread_safe::ThreadSafe<Testt> t1;
+
+    //int xxx = 9;
+    //xxx << *t1; //always rvalue, bad
+    //xxx << std::move(*t1); //same as before, not good
 }
 #endif
 
@@ -94,5 +122,5 @@ int main() {
         autoCast();
     #endif
 
-    int x; std::cin >> x;
+    int xwgt; std::cin >> xwgt;
 }
