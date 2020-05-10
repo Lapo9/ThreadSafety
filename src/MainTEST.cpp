@@ -5,11 +5,93 @@
 #include "ThreadSafe.h"
 #include "Testt.h"
 
+
+#define LESSON1 0
+#define EXP1 1
 #define SCRATCH 0
 #define BASIC 0
-#define AUTOCAST 1
+#define AUTOCAST 0
 
 
+#if LESSON1
+
+class bar
+{
+public:
+    bar(const bar &b)
+    {
+    }
+};
+
+
+int main() {
+    Testt t1;
+    
+}
+
+struct int_vector
+{
+    int *ptr_;
+    int size_;
+    int cap_;
+public:
+    int_vector(int_vector &v)
+    {
+        ptr_ = v.ptr_;
+        size_ = v.size_;
+        cap_ = v.cap_;
+
+        v.ptr_=0;
+        // ...
+        // I need to allocate the same size, and copy all values over
+    }
+};
+
+
+// Imagine we had a function add
+
+big_number add(big_number a, big_number b)
+
+
+// big_number add(big_number *a, big_number *b);
+// big_number add(big_number &a, big_number &b);
+// big_number add(big_number &&a, big_number &&b);
+
+big_number three(3bn);
+big_number  four(4bn);
+
+add(three,four);
+
+// this is our stack
+//bottom [sizeof(void*), sizeof(void*)] top ?
+
+// call add
+
+// add pops 3 & 4, pushes 7
+
+
+int foo(std::string s);
+int foo_r(std::string&& s);
+
+
+
+int main()
+{
+    std::string s = "foo";
+    foo(s); // make a copy ctor const std::string &
+    foo("bar"); // make a copy ctor const char*
+    foo(std::move(s)); // makes a copy, ctor std::string &&
+}
+
+
+
+
+void foo(int v);
+void foo(const int& v);
+void foo(int& v);
+void foo(int&& v);
+
+#endif
 
 #if SCRATCH
 int appendAndLenght(std::string& app, float x) {
@@ -107,6 +189,19 @@ void autoCast() {
 }
 #endif
 
+#if EXP1
+
+void exp1() {
+    Testt t1;
+
+    int a = 9;
+    static_cast<float>(a);
+    std::cout << std::is_same<int, decltype(a)>::value;
+
+}
+
+
+#endif
 
 
 int main() {
@@ -120,6 +215,10 @@ int main() {
 
     #if AUTOCAST
         autoCast();
+    #endif
+
+    #if EXP1
+        exp1();
     #endif
 
     int xwgt; std::cin >> xwgt;
